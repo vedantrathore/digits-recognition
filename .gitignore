@@ -3,3 +3,4 @@
 digenv
 __pycache__
 models/*
+mnist.pkl.gz

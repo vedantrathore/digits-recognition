@@ -196,7 +196,7 @@ class Network(object):
 if __name__ == '__main__':
     training_data, validation_data, test_data = mnist.load_data()
     nn = Network(sizes=[784, 30, 10])
+    print "--------------- Training ---------------"
     nn.fit(training_data=training_data, validation_data=validation_data)
-    nn.save()
-    nn.predict(test_data[0])
+    print "Neural Network accuracy on test data is {} %".format(nn.validate(test_data) / 100.00)
     print " -------------- Complete ---------------"
