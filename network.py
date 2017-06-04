@@ -198,4 +198,5 @@ if __name__ == '__main__':
     nn = Network(sizes=[784, 30, 10])
     nn.fit(training_data=training_data, validation_data=validation_data)
     nn.save()
+    nn.predict(test_data[0])
     print " -------------- Complete ---------------"
