@@ -1,89 +1,201 @@
+import os
 import random
 import numpy as np
-import mnist_loader
 
-# Sigmoid activation function
-def sigmoid(x, derivative=False):
-    if derivative:
-        return sigmoid(x)*(1-sigmoid(x))
-    return 1/(1 + np.exp(-x))
+from activations.sigmoid import sigmoid, sigmoid_prime
+from datasets import mnist
 
-class Network():
+
+class Network(object):
+    """Initialize a Neural Network model
+
+    Parameters
+    ---------
+    sizes: list, optional
+        A list of numbers specifying number of neurons in each layer. Not
+        required if pretrained model is used.
+
+    learning_rate: float, optional
+        learning rate for the gradient descent optimization. Defaults to 3.0
+
+    mini_batch_size: int, optional
+        Size of the mini batch of training examples as used by Stochastic
+        Gradient Descent. Denotes after how many examples the weights and biases
+        would be updated. Default size is 10.
+
     """
-        Sizes is the array of number of nodes you want in each layer.
-        For example sizes=[2,3,1] will give 2 nodes in input layer, 3 in 1st hidden layer and 1 output node.
-    """
-    def __init__(self, sizes):
+
+    def __init__(self, sizes=list(), epochs=10, learning_rate=3.0,
+                 mini_batch_size=10):
         self.num_layers = len(sizes)
         self.sizes = sizes
-        self.biases = [np.random.randn(y,1) for y in sizes[1:]]
-        self.weights = [np.random.randn(y,x) for x,y in zip(sizes[:-1],sizes[1:])]
+        self.biases = [np.random.randn(y, 1) for y in sizes]
 
-    def feed_forward(self, a):
-        for b,w in zip(self.biases, self.weights):
-            a = sigmoid(np.dot(w,a) + b)
-        return a
+        # first term is for layer 0 (input layer)
+        self.weights = [np.array([0])] + [np.random.randn(y, x)
+                                          for y, x in zip(sizes[1:], sizes[:-1])]
+        self._zs = [np.zeros(bias.shape) for bias in self.biases]
+        self._activations = [np.zeros(bias.shape) for bias in self.biases]
 
-    def SGD(self, training_data, epochs, mini_batch_size, eta, test_data=None):
-        """Training the neural network using Stochastic gradeint descent."""
-        if test_data:
-            n_test = len(test_data)
-        n = len(training_data)
-        for x in xrange(epochs):
+        self.mini_batch_size = mini_batch_size
+        self.epochs = epochs
+        self.eta = learning_rate
+
+    def fit(self, training_data, validation_data=None):
+        """Fit(train) the Neural Network on provided training data. Fitting is
+        carried out using Stochastic Gradient Descent Algorithm.
+
+        Parameters
+        ---------
+        training_data : list of tuple
+            A list of tuples of numpy arrays, ordered as (image, label).
+
+        validation_data : list of tuple, optional
+            Same as `training_data`, if provided, the netowrk will display the
+            validation accuracy after each epoch
+
+        """
+        for epoch in range(self.epochs):
             random.shuffle(training_data)
-            mini_batches = [training_data[k:k+mini_batch_size] for k in xrange(0, n, mini_batch_size)]
+            mini_batches = [
+                training_data[k:k + self.mini_batch_size] for k in
+                range(0, len(training_data), self.mini_batch_size)]
+
             for mini_batch in mini_batches:
-                self.update_mini_batch(mini_batch, eta)
-            if test_data:
-                print "Epoch {0}: {1} / {2}".format(x, self.evaluate(test_data), n_test)
+                nabla_b = [np.zeros(b.shape) for b in self.biases]
+                nabla_w = [np.zeros(w.shape) for w in self.weights]
+                for x, y in mini_batch:
+                    self._forward_prop(x)
+                    delta_nabla_b, delta_nabla_w = self._back_prop(x, y)
+                    nabla_b = [nb + dnb for nb,
+                               dnb in zip(nabla_b, delta_nabla_b)]
+                    nabla_w = [nw + dnw for nw,
+                               dnw in zip(nabla_w, delta_nabla_w)]
+
+                self.weights = [
+                    w - (self.eta / self.mini_batch_size) * dw for w, dw in
+                    zip(self.weights, nabla_w)]
+
+                self.biases = [
+                    b - (self.eta / self.mini_batch_size) * db for b, db in
+                    zip(self.biases, nabla_b)]
+
+            if validation_data:
+                accuracy = self.validate(validation_data) / 100.00
+                print "Epoch {0}: accuracy {1} %.".format(epoch + 1, accuracy)
             else:
-                print "Epoch {0} complete".format(x)
+                print "Epoch {0} complete".format(epoch + 1)
 
-    def update_mini_batch(self,mini_batch, eta):
-        """Update the networks weights and biases using backpropogation to a single mini batch."""
+    def validate(self, validation_data):
+        """Validate the Neural Netwoek on provided validation data. It uses the
+        number of correctly predicted examples as validation accuracy metric.
+
+        Parameters
+        --------
+        validation_data : list of tuple
+
+        Returns
+        ------
+        int
+            Number of correctly predicted images
+        """
+        validation_results = [(self.predict(x) == y)
+                              for x, y in validation_data]
+        return sum(result for result in validation_results)
+
+    def predict(self, x):
+        """Predict the label of a single test example (image).
+
+        Parameters
+        ---------
+        x : numpy.array
+
+        Returns
+        ------
+        int
+            Predicted label of example (image)
+        """
+        self._forward_prop(x)
+        return np.argmax(self._activations[-1])
+
+    def _forward_prop(self, x):
+        self._activations[0] = x
+        for i in range(1, self.num_layers):
+            self._zs[i] = (
+                self.weights[i].dot(self._activations[i - 1]) + self.biases[i]
+            )
+            self._activations[i] = sigmoid(self._zs[i])
+
+    def _back_prop(self, x, y):
         nabla_b = [np.zeros(b.shape) for b in self.biases]
         nabla_w = [np.zeros(w.shape) for w in self.weights]
-        for x, y in mini_batch:
-            delta_nabla_b, delta_nabla_w = self.backprop(x,y)
-            nabla_b = [nb+dnb for nb, dnb in zip(nabla_b, delta_nabla_b)]
-            nabla_w = [nw+dnw for nw, dnw in zip(nabla_w, delta_nabla_w)]
-        self.weights = [w - (eta/len(mini_batch))*nw for w,nw in zip(self.weights, nabla_w)]
-        self.biases = [b - (eta/len(mini_batch))*nb for b,nb in zip(self.biases, nabla_b)]
 
-    def backprop(self, x, y):
-        """perfrom backprogation algorithm for x and y"""
-        nabla_b = [np.zeros(b.shape) for b in self.biases]
-        nabla_w = [np.zeros(w.shape) for w in self.weights]
-        activation = x
-        activations = [x]
-        zs = []
-        for b, w in zip(self.biases, self.weights):
-            z = np.dot(w, activation)+b
-            zs.append(z)
-            activation = sigmoid(z)
-            activations.append(activation)
-        # backward pass
-        delta = self.cost_derivative(activations[-1], y) * \
-            sigmoid(zs[-1],derivative=True)
-        nabla_b[-1] = delta
-        nabla_w[-1] = np.dot(delta, activations[-2].transpose())
-        for l in xrange(2, self.num_layers):
-            z = zs[-l]
-            sp = sigmoid(z,derivative=True)
-            delta = np.dot(self.weights[-l+1].transpose(), delta) * sp
-            nabla_b[-l] = delta
-            nabla_w[-l] = np.dot(delta, activations[-l-1].transpose())
-        return (nabla_b, nabla_w)
+        error = (self._activations[-1] - y) * \
+            sigmoid_prime(self._zs[-1])
+        nabla_b[-1] = error
+        nabla_w[-1] = error.dot(self._activations[-2].transpose())
 
-    def cost_derivative(self, output_activations, y):
-        return (output_activations - y)
+        for l in range(self.num_layers - 2, 0, -1):
+            error = np.multiply(
+                self.weights[l + 1].transpose().dot(error),
+                sigmoid_prime(self._zs[l])
+            )
+            nabla_b[l] = error
+            nabla_w[l] = error.dot(self._activations[l - 1].transpose())
 
-    def evaluate(self, test_data):
-        """Test the model"""
-        test_results = [(np.argmax(self.feed_forward(x)), y) for (x, y) in test_data]
-        return sum(int(x==y) for (x,y) in test_results)
+        return nabla_b, nabla_w
+
+    def load(self, filename='model.npz'):
+        """Prepare a neural network from a compressed binary containing weights and
+        biases array. Size of layers are derived from dimensions of numpy arrays.
+
+        Parameters
+        ---------
+        filename : str, optional
+            Name of the ``.npz`` compressed binary in models directory.
+
+
+        """
+        npz_members = np.load(os.path.join(os.curdir, 'models', filename))
+
+        self.weights = list(npz_members['weights'])
+        self.biases = list(npz_members['biases'])
+        self.sizes = [b.shape[0] for b in self.biases]
+        self.num_layers = len(self.sizes)
+
+        self._zs = [np.zeros(bias.shape) for bias in self.biases]
+        self._activations = [np.zeros(bias.shape) for bias in self.biases]
+
+        self.epochs = int(npz_members['epochs'])
+        self.mini_batch_size = int(npz_members['mini_batch_size'])
+        self.epochs = int(npz_members['epochs'])
+
+    def save(self, filename='model.npz'):
+        """Save weights, biases and hyperparameters of a neural network to a
+        compressed binary. This ``.npz`` binary is saved in 'models' directory
+
+        Parameters
+        ---------
+        filename: str, optional
+            Name of the ``.npz`` compressed binary in to be saved
+
+
+        """
+        if not os.path.exists('models'):
+            os.makedirs('models')
+        np.savez_compressed(
+            file=os.path.join(os.curdir, 'models', filename),
+            weights=self.weights,
+            biases=self.biases,
+            mini_batch_size=self.mini_batch_size,
+            epochs=self.epochs,
+            eta=self.eta
+        )
+
 
 if __name__ == '__main__':
-    training_data, validation_data, test_data = mnist_loader.load_data_wrapper()
-    net = Network([784, 30, 10])
-    net.SGD(training_data, 30, 10, 3.0)
+    training_data, validation_data, test_data = mnist.load_data()
+    nn = Network(sizes=[784, 30, 10])
+    nn.fit(training_data=training_data, validation_data=validation_data)
+    nn.save()
+    print " -------------- Complete ---------------"
