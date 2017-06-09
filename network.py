@@ -31,10 +31,15 @@ class Network(object):
     cost: string, optional
         The cost function to be used to evaluate by how much our assumptions
         were deviated. Defaults to `rms`.
+
+    lmbda: float, optional
+        The L1 regularization parameter to generalize the neural network.
+        Default value is 0.0.
+
     """
 
     def __init__(self, sizes=list(), epochs=10, learning_rate=3.0,
-                 batch_size=10, cost='rms'):
+                 lmbda=0.0, batch_size=10, cost='rms'):
         self.num_layers = len(sizes)
         self.sizes = sizes
         self.biases = [np.random.randn(y, 1) for y in sizes]
@@ -49,6 +54,7 @@ class Network(object):
         self.batch_size = batch_size
         self.epochs = epochs
         self.eta = learning_rate
+        self.lmbda = lmbda
 
     def fit(self, training_data, validation_data=None):
         """Fit(train) the Neural Network on provided training data. Fitting is
@@ -82,12 +88,14 @@ class Network(object):
                                dnw in zip(nabla_w, delta_nabla_w)]
 
                 self.weights = [
-                    w - (self.eta / self.batch_size) * dw for w, dw in
-                    zip(self.weights, nabla_w)]
+                    (1 - self.eta * (self.lmbda / len(training_data))) * w - (self.eta / self.batch_size) * dw for w, dw in
+                    zip(self.weights, nabla_w)
+                ]
 
                 self.biases = [
                     b - (self.eta / self.batch_size) * db for b, db in
-                    zip(self.biases, nabla_b)]
+                    zip(self.biases, nabla_b)
+                ]
 
             if validation_data:
                 accuracy = self.validate(validation_data) / 100.00
