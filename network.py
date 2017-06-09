@@ -24,6 +24,13 @@ class Network(object):
         Gradient Descent. Denotes after how many examples the weights and biases
         would be updated. Default size is 10.
 
+    epochs: int, optional
+        Number of Epochs through which Neural Network will be trained. Defaults
+        to 10.
+
+    cost: string, optional
+        The cost function to be used to evaluate by how much our assumptions
+        were deviated. Defaults to `rms`.
     """
 
     def __init__(self, sizes=list(), epochs=10, learning_rate=3.0,
@@ -32,6 +39,7 @@ class Network(object):
         self.sizes = sizes
         self.biases = [np.random.randn(y, 1) for y in sizes]
         self.cost = costs[cost]
+
         # first term is for layer 0 (input layer)
         self.weights = [np.array([0])] + [np.random.randn(y, x)
                                           for y, x in zip(sizes[1:], sizes[:-1])]
