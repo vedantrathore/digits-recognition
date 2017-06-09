@@ -4,6 +4,7 @@ import numpy as np
 
 from activations.sigmoid import sigmoid, sigmoid_prime
 from datasets import mnist
+from config import costs
 
 
 class Network(object):
@@ -18,7 +19,7 @@ class Network(object):
     learning_rate: float, optional
         learning rate for the gradient descent optimization. Defaults to 3.0
 
-    mini_batch_size: int, optional
+    batch_size: int, optional
         Size of the mini batch of training examples as used by Stochastic
         Gradient Descent. Denotes after how many examples the weights and biases
         would be updated. Default size is 10.
@@ -26,18 +27,18 @@ class Network(object):
     """
 
     def __init__(self, sizes=list(), epochs=10, learning_rate=3.0,
-                 mini_batch_size=10):
+                 batch_size=10, cost='rms'):
         self.num_layers = len(sizes)
         self.sizes = sizes
         self.biases = [np.random.randn(y, 1) for y in sizes]
-
+        self.cost = costs[cost]
         # first term is for layer 0 (input layer)
         self.weights = [np.array([0])] + [np.random.randn(y, x)
                                           for y, x in zip(sizes[1:], sizes[:-1])]
         self._zs = [np.zeros(bias.shape) for bias in self.biases]
         self._activations = [np.zeros(bias.shape) for bias in self.biases]
 
-        self.mini_batch_size = mini_batch_size
+        self.batch_size = batch_size
         self.epochs = epochs
         self.eta = learning_rate
 
@@ -58,8 +59,8 @@ class Network(object):
         for epoch in range(self.epochs):
             random.shuffle(training_data)
             mini_batches = [
-                training_data[k:k + self.mini_batch_size] for k in
-                range(0, len(training_data), self.mini_batch_size)]
+                training_data[k:k + self.batch_size] for k in
+                range(0, len(training_data), self.batch_size)]
 
             for mini_batch in mini_batches:
                 nabla_b = [np.zeros(b.shape) for b in self.biases]
@@ -73,11 +74,11 @@ class Network(object):
                                dnw in zip(nabla_w, delta_nabla_w)]
 
                 self.weights = [
-                    w - (self.eta / self.mini_batch_size) * dw for w, dw in
+                    w - (self.eta / self.batch_size) * dw for w, dw in
                     zip(self.weights, nabla_w)]
 
                 self.biases = [
-                    b - (self.eta / self.mini_batch_size) * db for b, db in
+                    b - (self.eta / self.batch_size) * db for b, db in
                     zip(self.biases, nabla_b)]
 
             if validation_data:
@@ -130,8 +131,8 @@ class Network(object):
         nabla_b = [np.zeros(b.shape) for b in self.biases]
         nabla_w = [np.zeros(w.shape) for w in self.weights]
 
-        error = (self._activations[-1] - y) * \
-            sigmoid_prime(self._zs[-1])
+        error = (self.cost).delta(self._zs[-1], self._activations[-1], y)
+
         nabla_b[-1] = error
         nabla_w[-1] = error.dot(self._activations[-2].transpose())
 
@@ -162,12 +163,13 @@ class Network(object):
         self.biases = list(npz_members['biases'])
         self.sizes = [b.shape[0] for b in self.biases]
         self.num_layers = len(self.sizes)
+        self.cost = npz_members['cost']
 
         self._zs = [np.zeros(bias.shape) for bias in self.biases]
         self._activations = [np.zeros(bias.shape) for bias in self.biases]
 
         self.epochs = int(npz_members['epochs'])
-        self.mini_batch_size = int(npz_members['mini_batch_size'])
+        self.batch_size = int(npz_members['batch_size'])
         self.epochs = int(npz_members['epochs'])
 
     def save(self, filename='model.npz'):
@@ -187,16 +189,18 @@ class Network(object):
             file=os.path.join(os.curdir, 'models', filename),
             weights=self.weights,
             biases=self.biases,
-            mini_batch_size=self.mini_batch_size,
+            batch_size=self.batch_size,
             epochs=self.epochs,
-            eta=self.eta
+            eta=self.eta,
+            cost=self.cost,
         )
 
 
 if __name__ == '__main__':
     training_data, validation_data, test_data = mnist.load_data()
-    nn = Network(sizes=[784, 30, 10])
+    nn = Network(sizes=[784, 30, 10], cost='cross_entropy')
     print "--------------- Training ---------------"
     nn.fit(training_data=training_data, validation_data=validation_data)
     print "Neural Network accuracy on test data is {} %".format(nn.validate(test_data) / 100.00)
+    nn.save()
     print " -------------- Complete ---------------"
